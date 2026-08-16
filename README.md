@@ -75,7 +75,7 @@ Minimum Dst ≤ −50 nT
 
 ---
 
-## 📊 Dataset
+## Dataset
 
 ### Richardson & Cane ICME Catalog
 
@@ -97,7 +97,7 @@ This provides multiple solar cycles and a broad range of ICME conditions for mod
 
 ---
 
-## 📈 Model Performance
+## Model Performance
 
 Current LSTM performance after threshold tuning:
 
@@ -113,7 +113,7 @@ The **76.7% recall** is particularly important for an early-warning application 
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```text
 Richardson & Cane Catalog
@@ -140,7 +140,7 @@ Richardson & Cane Catalog
       Early Warning
 ```
 
-## ▶️ Running the Project
+## Running the Project
 
 Run the main application:
 
