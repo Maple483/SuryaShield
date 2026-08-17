@@ -5,7 +5,7 @@ The `data/` directory contains the raw and processed datasets used in the Suryas
 ### Source Data
 - **Richardson & Cane ICME Catalog** — ICME event identification and timing and minimum dst index.
 (https://izw1.caltech.edu/ACE/ASC/DATA/level3/icmetable2.htm)
-Fields: Disturbance Y/M/D (UT) | ICME Plasma/Field Start | ICME Plasma/Field End Y/M/D (UT) | Dst (nT) (m)
+- Fields: Disturbance Y/M/D (UT) | ICME Plasma/Field Start | ICME Plasma/Field End Y/M/D (UT) | Dst (nT) (m)
 
 - **NASA OMNI Dataset** — Time-series solar-wind measurements.
 (https://spdf.gsfc.nasa.gov/pub/data/omni/low_res_omni/)
