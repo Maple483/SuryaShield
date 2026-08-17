@@ -30,40 +30,20 @@ from tensorflow.keras.callbacks import (
     ReduceLROnPlateau
 )
 
-
-# ============================================================
-# RANDOM SEED
-# ============================================================
-
 SEED = 42
 
 np.random.seed(SEED)
 random.seed(SEED)
 tf.random.set_seed(SEED)
 
-
-# ============================================================
-# LOAD MASTER DATASET
-# ============================================================
-
 master = pd.read_csv(
     r"C:\Users\Ishita\Desktop\CME_project\Dataset\Master_Dataset.csv"
 )
-
-
-# ============================================================
-# DATETIME
-# ============================================================
 
 master["Datetime"] = pd.to_datetime(
     master["Datetime"],
     errors="coerce"
 )
-
-
-# ============================================================
-# FEATURE SETS
-# ============================================================
 
 features_all = [
     "Bmag",
@@ -92,18 +72,10 @@ features_no_bx = [
     "Mach"
 ]
 
-
 feature_sets = {
-
     "All 11 Features": features_all,
-
     "Without Bx": features_no_bx
 }
-
-
-# ============================================================
-# EVENT LABELS
-# ============================================================
 
 event_labels = (
     master
@@ -111,59 +83,31 @@ event_labels = (
     .first()
 )
 
-
 event_ids = event_labels.index.values
 
-
-# ============================================================
-# TRAIN / VALIDATION / TEST SPLIT
-# ============================================================
-
 train_events, test_events = train_test_split(
-
     event_ids,
-
     test_size=0.20,
-
     random_state=SEED,
-
     stratify=event_labels.loc[event_ids]
 )
 
-
 train_events, val_events = train_test_split(
-
     train_events,
-
     test_size=0.20,
-
     random_state=SEED,
-
     stratify=event_labels.loc[train_events]
 )
 
-
-# ============================================================
-# RESULTS
-# ============================================================
-
 results = []
 
-
-# ============================================================
-# FUNCTION TO CREATE SEQUENCES
-# ============================================================
-
 def create_sequences(df, features):
-
     X = []
     y = []
 
     for event_id, group in df.groupby("Event_ID"):
-
         group = group.sort_values("Datetime")
 
-        # Every ICME must have exactly 3 hourly measurements
         if len(group) != 3:
             continue
 
@@ -177,21 +121,11 @@ def create_sequences(df, features):
 
     return np.array(X), np.array(y)
 
-
-# ============================================================
-# TRAIN BOTH MODELS
-# ============================================================
-
 for model_name, features in feature_sets.items():
 
     print("\n========================================")
     print(model_name)
     print("========================================")
-
-
-    # --------------------------------------------------------
-    # CREATE DATA SPLITS
-    # --------------------------------------------------------
 
     train_df = master[
         master["Event_ID"].isin(train_events)
@@ -205,11 +139,6 @@ for model_name, features in feature_sets.items():
         master["Event_ID"].isin(test_events)
     ].copy()
 
-
-    # --------------------------------------------------------
-    # SORT
-    # --------------------------------------------------------
-
     train_df = train_df.sort_values(
         ["Event_ID", "Datetime"]
     )
@@ -222,33 +151,15 @@ for model_name, features in feature_sets.items():
         ["Event_ID", "Datetime"]
     )
 
-
-    # --------------------------------------------------------
-    # MISSING VALUE IMPUTATION
-    # TRAIN MEDIAN ONLY
-    # --------------------------------------------------------
+    medians = {}
 
     for col in features:
-
         median = train_df[col].median()
+        medians[col] = median
 
-        train_df[col] = train_df[col].fillna(
-            median
-        )
-
-        val_df[col] = val_df[col].fillna(
-            median
-        )
-
-        test_df[col] = test_df[col].fillna(
-            median
-        )
-
-
-    # --------------------------------------------------------
-    # STANDARDIZATION
-    # FIT ONLY ON TRAINING DATA
-    # --------------------------------------------------------
+        train_df[col] = train_df[col].fillna(median)
+        val_df[col] = val_df[col].fillna(median)
+        test_df[col] = test_df[col].fillna(median)
 
     scaler = StandardScaler()
 
@@ -263,11 +174,6 @@ for model_name, features in feature_sets.items():
     test_df[features] = scaler.transform(
         test_df[features]
     )
-
-
-    # --------------------------------------------------------
-    # CREATE 3-HOUR SEQUENCES
-    # --------------------------------------------------------
 
     X_train, y_train = create_sequences(
         train_df,
@@ -284,305 +190,151 @@ for model_name, features in feature_sets.items():
         features
     )
 
-
-    # --------------------------------------------------------
-    # BUILD LSTM
-    # --------------------------------------------------------
+    print("X_train shape:", X_train.shape)
+    print("X_val shape:", X_val.shape)
+    print("X_test shape:", X_test.shape)
+    print("y_train shape:", y_train.shape)
+    print("y_val shape:", y_val.shape)
+    print("y_test shape:", y_test.shape)   
 
     model = Sequential([
+    Input(shape=(X_train.shape[1], X_train.shape[2])),
+    Bidirectional(LSTM(64, return_sequences=True)),
+    SpatialDropout1D(0.2),
+    LSTM(32),
+    Dropout(0.3),
+    Dense(32, activation="relu"),
+    Dropout(0.2),
+    Dense(1, activation="sigmoid")
+])
 
-        Input(
-            shape=(
-                X_train.shape[1],
-                X_train.shape[2]
-            )
-        ),
+model.compile(
+    optimizer="adam",
+    loss="binary_crossentropy",
+    metrics=["accuracy"]
+)
 
-        Bidirectional(
-            LSTM(
-                64,
-                return_sequences=True
-            )
-        ),
+early_stopping = EarlyStopping(
+    monitor="val_loss",
+    patience=15,
+    restore_best_weights=True
+)
 
-        SpatialDropout1D(0.2),
+reduce_lr = ReduceLROnPlateau(
+    monitor="val_loss",
+    factor=0.5,
+    patience=5,
+    min_lr=1e-6
+)
 
-        LSTM(32),
+model.fit(
+    X_train,
+    y_train,
+    validation_data=(X_val, y_val),
+    epochs=150,
+    batch_size=16,
+    callbacks=[
+        early_stopping,
+        reduce_lr
+    ],
+    verbose=0
+)
 
-        Dropout(0.3),
+val_prob = model.predict(
+    X_val,
+    verbose=0
+).ravel()
 
-        Dense(
-            32,
-            activation="relu"
-        ),
+test_prob = model.predict(
+    X_test,
+    verbose=0
+).ravel()
 
-        Dropout(0.2),
+thresholds = np.arange(
+    0.20,
+    0.51,
+    0.01
+)
 
-        Dense(
-            1,
-            activation="sigmoid"
-        )
-    ])
+best_threshold = 0.5
+best_val_f1 = -1
 
-
-    # --------------------------------------------------------
-    # COMPILE
-    # --------------------------------------------------------
-
-    model.compile(
-
-        optimizer="adam",
-
-        loss="binary_crossentropy",
-
-        metrics=["accuracy"]
-    )
-
-
-    # --------------------------------------------------------
-    # CALLBACKS
-    # --------------------------------------------------------
-
-    early_stopping = EarlyStopping(
-
-        monitor="val_loss",
-
-        patience=15,
-
-        restore_best_weights=True
-    )
-
-
-    reduce_lr = ReduceLROnPlateau(
-
-        monitor="val_loss",
-
-        factor=0.5,
-
-        patience=5,
-
-        min_lr=1e-6
-    )
-
-
-    # --------------------------------------------------------
-    # TRAIN
-    # --------------------------------------------------------
-
-    model.fit(
-
-        X_train,
-
-        y_train,
-
-        validation_data=(
-            X_val,
-            y_val
-        ),
-
-        epochs=150,
-
-        batch_size=16,
-
-        callbacks=[
-            early_stopping,
-            reduce_lr
-        ],
-
-        verbose=0
-    )
-
-
-    # --------------------------------------------------------
-    # PREDICTIONS
-    # --------------------------------------------------------
-
-    val_prob = model.predict(
-        X_val,
-        verbose=0
-    ).ravel()
-
-    test_prob = model.predict(
-        X_test,
-        verbose=0
-    ).ravel()
-
-
-    # ========================================================
-    # THRESHOLD OPTIMIZATION
-    # VALIDATION SET ONLY
-    # ========================================================
-
-    thresholds = np.arange(
-        0.20,
-        0.51,
-        0.01
-    )
-
-
-    best_threshold = 0.5
-
-    best_val_f1 = -1
-
-
-    for threshold in thresholds:
-
-        val_pred = (
-            val_prob >= threshold
-        ).astype(int)
-
-        current_f1 = f1_score(
-
-            y_val,
-
-            val_pred,
-
-            zero_division=0
-        )
-
-
-        if current_f1 > best_val_f1:
-
-            best_val_f1 = current_f1
-
-            best_threshold = threshold
-
-
-    # --------------------------------------------------------
-    # FINAL TEST PREDICTION
-    # --------------------------------------------------------
-
-    test_pred = (
-        test_prob >= best_threshold
+for threshold in thresholds:
+    val_pred = (
+        val_prob >= threshold
     ).astype(int)
 
-
-    # --------------------------------------------------------
-    # METRICS
-    # --------------------------------------------------------
-
-    accuracy = accuracy_score(
-        y_test,
-        test_pred
-    )
-
-    precision = precision_score(
-        y_test,
-        test_pred,
+    current_f1 = f1_score(
+        y_val,
+        val_pred,
         zero_division=0
     )
 
-    recall = recall_score(
-        y_test,
-        test_pred,
-        zero_division=0
-    )
+    if current_f1 > best_val_f1:
+        best_val_f1 = current_f1
+        best_threshold = threshold
 
-    f1 = f1_score(
-        y_test,
-        test_pred,
-        zero_division=0
-    )
+test_pred = (
+    test_prob >= best_threshold
+).astype(int)
 
-    roc_auc = roc_auc_score(
-        y_test,
-        test_prob
-    )
+accuracy = accuracy_score(
+    y_test,
+    test_pred
+)
 
+precision = precision_score(
+    y_test,
+    test_pred,
+    zero_division=0
+)
 
-    # --------------------------------------------------------
-    # CONFUSION MATRIX
-    # --------------------------------------------------------
+recall = recall_score(
+    y_test,
+    test_pred,
+    zero_division=0
+)
 
-    cm = confusion_matrix(
-        y_test,
-        test_pred
-    )
+f1 = f1_score(
+    y_test,
+    test_pred,
+    zero_division=0
+)
 
+roc_auc = roc_auc_score(
+    y_test,
+    test_prob
+)
 
-    # --------------------------------------------------------
-    # PRINT RESULTS
-    # --------------------------------------------------------
+cm = confusion_matrix(
+    y_test,
+    test_pred
+)
 
-    print(
-        "Features:",
-        len(features)
-    )
+print("Features:", len(features))
+print("Best threshold:", round(best_threshold, 2))
+print("Validation F1:", round(best_val_f1, 4))
+print("Accuracy:", round(accuracy, 4))
+print("Precision:", round(precision, 4))
+print("Recall:", round(recall, 4))
+print("F1 Score:", round(f1, 4))
+print("ROC-AUC:", round(roc_auc, 4))
+print("Confusion Matrix:")
+print(cm)
 
-    print(
-        "Best threshold:",
-        round(best_threshold, 2)
-    )
-
-    print(
-        "Validation F1:",
-        round(best_val_f1, 4)
-    )
-
-    print(
-        "Accuracy :",
-        round(accuracy, 4)
-    )
-
-    print(
-        "Precision:",
-        round(precision, 4)
-    )
-
-    print(
-        "Recall   :",
-        round(recall, 4)
-    )
-
-    print(
-        "F1 Score :",
-        round(f1, 4)
-    )
-
-    print(
-        "ROC-AUC  :",
-        round(roc_auc, 4)
-    )
-
-    print(
-        "Confusion Matrix:"
-    )
-
-    print(cm)
-
-
-    # --------------------------------------------------------
-    # SAVE RESULTS
-    # --------------------------------------------------------
-
-    results.append({
-
-        "Model": model_name,
-
-        "Features": len(features),
-
-        "Threshold": best_threshold,
-
-        "Validation_F1": best_val_f1,
-
-        "Accuracy": accuracy,
-
-        "Precision": precision,
-
-        "Recall": recall,
-
-        "F1": f1,
-
-        "ROC_AUC": roc_auc
-    })
-
-
-# ============================================================
-# FINAL COMPARISON
-# ============================================================
+results.append({
+    "Model": model_name,
+    "Features": len(features),
+    "Threshold": best_threshold,
+    "Validation_F1": best_val_f1,
+    "Accuracy": accuracy,
+    "Precision": precision,
+    "Recall": recall,
+    "F1": f1,
+    "ROC_AUC": roc_auc
+})
 
 results_df = pd.DataFrame(results)
-
 
 print("\n========================================")
 print("FINAL MODEL COMPARISON")
@@ -594,32 +346,17 @@ print(
     )
 )
 
-
-# ============================================================
-# SAVE COMPARISON
-# ============================================================
-
 output_path = (
-    r"C:\Users\Ishita\Desktop\CME_project"
-    r"\Dataset\LSTM_model_comparison.csv"
+    "LSTM_model_comparison.csv"
 )
-
 
 results_df.to_csv(
     output_path,
     index=False
 )
 
-
 print("\nSaved comparison to:")
 print(output_path)
-
-
-##-----------------------------------------PERMUTATION IMPORTANCE FOR ALL 11 FEATURES--------------------------------------------##
-
-# ============================================================
-# PERMUTATION FEATURE IMPORTANCE FOR LSTM
-# ============================================================
 
 from sklearn.metrics import roc_auc_score
 import numpy as np
@@ -630,11 +367,6 @@ print("\n")
 print("=" * 60)
 print("PERMUTATION FEATURE IMPORTANCE")
 print("=" * 60)
-
-
-# ------------------------------------------------------------
-# Baseline ROC-AUC
-# ------------------------------------------------------------
 
 baseline_prob = model.predict(
     X_test,
@@ -651,11 +383,6 @@ print(
     round(baseline_auc, 4)
 )
 
-
-# ------------------------------------------------------------
-# Permutation importance
-# ------------------------------------------------------------
-
 importance_results = []
 
 rng = np.random.RandomState(42)
@@ -664,26 +391,9 @@ for feature_index, feature_name in enumerate(features):
 
     auc_scores = []
 
-    # Repeat permutation several times
     for repeat in range(10):
 
         X_permuted = X_test.copy()
-
-        # Shuffle the EVENTS for this feature.
-        #
-        # Important:
-        # We shuffle the complete 3-hour sequence
-        # of the feature together.
-        #
-        # Example:
-        #
-        # Event A: Bz = [-2, -8, -12]
-        # Event B: Bz = [ 3,  5,   2]
-        #
-        # After permutation:
-        #
-        # Event A may receive Event B's entire Bz sequence.
-        #
 
         permutation = rng.permutation(
             X_permuted.shape[0]
@@ -711,11 +421,6 @@ for feature_index, feature_name in enumerate(features):
             permuted_auc
         )
 
-
-    # --------------------------------------------------------
-    # Importance = decrease in ROC-AUC
-    # --------------------------------------------------------
-
     mean_auc = np.mean(
         auc_scores
     )
@@ -730,27 +435,12 @@ for feature_index, feature_name in enumerate(features):
     )
 
     importance_results.append({
-
-        "Feature":
-            feature_name,
-
-        "Baseline_ROC_AUC":
-            baseline_auc,
-
-        "Permuted_ROC_AUC":
-            mean_auc,
-
-        "Importance":
-            importance,
-
-        "Std":
-            std_auc
+        "Feature": feature_name,
+        "Baseline_ROC_AUC": baseline_auc,
+        "Permuted_ROC_AUC": mean_auc,
+        "Importance": importance,
+        "Std": std_auc
     })
-
-
-# ------------------------------------------------------------
-# Results dataframe
-# ------------------------------------------------------------
 
 permutation_df = pd.DataFrame(
     importance_results
@@ -764,7 +454,6 @@ permutation_df = (
     )
     .reset_index(drop=True)
 )
-
 
 print("\nFEATURE IMPORTANCE")
 print("=" * 60)
@@ -781,11 +470,6 @@ print(
         index=False
     )
 )
-
-
-# ============================================================
-# PLOT
-# ============================================================
 
 plt.figure(
     figsize=(9, 6)
@@ -812,14 +496,8 @@ plt.tight_layout()
 
 plt.show()
 
-
-# ============================================================
-# SAVE RESULTS
-# ============================================================
-
 output_path = (
-    r"C:\Users\Ishita\Desktop\CME_project"
-    r"\Dataset\LSTM_permutation_importance.csv"
+    "LSTM_permutation_importance.csv"
 )
 
 permutation_df.to_csv(
