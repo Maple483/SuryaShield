@@ -6,7 +6,7 @@ The `data/` directory contains the raw and processed datasets used in the Suryas
 - **Richardson & Cane ICME Catalog** — ICME event identification and timing and minimum dst index.
 (https://izw1.caltech.edu/ACE/ASC/DATA/level3/icmetable2.htm)
 - **NASA OMNI Dataset** — Time-series solar-wind measurements.
-(https://omniweb.gsfc.nasa.gov/form/dx1.html)
+(https://spdf.gsfc.nasa.gov/pub/data/omni/low_res_omni/)
 
 ### Processed Data
 The raw datasets are synchronized using ICME shock arrival times. For each event, the **first 3 hours of sequential solar-wind observations** are extracted and combined with the corresponding geoeffectiveness label to form the LSTM input dataset.
