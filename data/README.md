@@ -17,6 +17,3 @@ The raw datasets are synchronized using ICME shock arrival times. For each event
 
 The final processed data is used for model training, validation, and testing.
 
-## Inputs for NASA OMNI:
-Create file
-Select resolution -> Hourly averaged
